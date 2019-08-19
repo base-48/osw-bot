@@ -5,3 +5,4 @@ authors = ["skirit <skirit@dump.cz>"]
 edition = "2018"
 
 [dependencies]
+buffered-reader = "*"
