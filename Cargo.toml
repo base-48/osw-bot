@@ -1,0 +1,7 @@
+[package]
+name = "osw-bot"
+version = "0.1.0"
+authors = ["skirit <skirit@dump.cz>"]
+edition = "2018"
+
+[dependencies]
