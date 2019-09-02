@@ -1,64 +1,101 @@
-use std::io::prelude::*;
+use std::io::prelude::Write;
 use std::{thread, time};
 use std::net::TcpStream;
-use std::io::{BufReader, BufRead};
+use std::io::{BufReader, BufRead, Read};
+use std::sync::mpsc::{Sender, Receiver, channel};
+use std::fs::File;
 
 static ADDR: &str = "irc.freenode.org:6667";
 static CHAN: &str = "#testbot32";
 static NICK: &str = "osw-bot";
+
+//static OFILE: 	&str = "/sys/class/gpio/gpio2_pd2/value";
+//static CFILE:		&str = "/sys/class/gpio/gpio1_pd0/value";
+//static OLFILE:	&str = "/sys/class/gpio/gpio4_pd5/value";
+//static CLFILE:	&str = "/sys/class/gpio/gpio5_pd6/value";
+//static SLFILE:	&str = "/sys/class/gpio/gpio3_pd1/value";
+
+// debug
+static OFILE: &str = "ofile.tmp";
+static CFILE: &str = "cfile.tmp";
 
 fn main() -> std::io::Result<()> {
 	loop{
 		let mut s = TcpStream::connect(ADDR)?;
 		s.set_read_timeout(Some(time::Duration::new(360, 0)))?;
 		let mut r = BufReader::new(s.try_clone()?);
-		let mut topic = String::new();
+		let (send, rec): (Sender<String>, Receiver<String>) = channel();
 
 		s.write(format!("NICK {}\n", NICK).as_ref())?;
 		s.write(format!("USER {} 0 * :test bot\n", NICK).as_ref())?;
 		s.write(format!("JOIN {}\n", CHAN).as_ref())?;
 		
-		let ss = s.try_clone()?;
-		let top = topic.clone();
-
+		let sc = s.try_clone()?;
 		thread::spawn(move || {
-    		checksw(&top, ss);
-    	//	checksw(ss);
+			checksw(rec, sc);
 		});
 
 		loop{
 			let mut data = String::new();
 			match r.read_line(&mut data) {
-				Ok(0) => { thread::sleep(time::Duration::new(180, 0)); break; }
-				Err(_)=> { thread::sleep(time::Duration::new(180, 0)); break; }
-				Ok(_) => { eval(data.trim_end().to_string(), &mut topic, s.try_clone()?)?; }
+				Err(_) | Ok(0) => { thread::sleep(time::Duration::new(180, 0)); break; }
+				Ok(_) => { eval(data.trim_end().to_string(), &send, s.try_clone()?)?; }
 			}
 		}
 	}
 }
 
-fn checksw(topic: &String, mut _s: TcpStream){
+fn checksw(rec: Receiver<String>, mut s: TcpStream){
+	let mut topic = String::new();
 	loop{
-		thread::sleep(time::Duration::new(5, 0));
-		println!("{:#?}", topic);
+		thread::sleep(time::Duration::new(1, 0));
+		let mut os = String::new();
+		let mut cs = String::new();
+
+		match rec.try_recv() {
+			Ok(data)=> { topic = data; }
+			Err(_) 	=> {}
+		}
+	    match File::open(OFILE) {
+			Ok(mut file) => { file.read_to_string(&mut os).unwrap(); }
+			Err(_) => {}
+		}
+	    match File::open(CFILE) {
+			Ok(mut file) => { file.read_to_string(&mut cs).unwrap(); }
+			Err(_) => {}
+		}
+		if os.trim() == "1" && cs.trim() == "0"
+		&& ! topic.starts_with("base open") && ! topic.is_empty(){
+			let (_,last) = topic.split_at(topic.find('|').unwrap_or(0));
+			let mut top = last.to_string();
+			top.remove(0);
+			println!("zmena open {:#?}", top);
+			s.write(format!("TOPIC {} :base open \\o/ |{}\n", CHAN, top).as_ref());
+		}
+		if os.trim() == "0" && cs.trim() == "1"
+			&& ! topic.starts_with("base close") && ! topic.is_empty(){
+			let (_,last) = topic.split_at(topic.find('|').unwrap_or(0));
+			let mut top = last.to_string();
+			top.remove(0);
+			println!("zmena close {:#?}", top);
+			s.write(format!("TOPIC {} :base close :( |{}\n", CHAN, top).as_ref());
+		}
 	}
 }
 
-fn eval(mut data: String, topic: &mut String, mut s: TcpStream) 
+fn eval(mut data: String, send: &Sender<String>, mut s: TcpStream)
 -> std::io::Result<()> {
 	println!("{:#?}", data);
 
 	if data.starts_with("PING :") {
 		s.write(format!("PONG :{}\n", data.trim_start_matches("PING :")).as_ref())?;
-		println!("{:#?}", format!("PONG :{}\n", data.trim_start_matches("PING :")));
 	}
 	else{
 		data.remove(0);
 		let (_,last) = data.split_at(data.find(' ').unwrap() + 1);
 		if last.starts_with("332 ") || last.starts_with("TOPIC ") {
 			let (_,last) = data.split_at(data.find(':').unwrap() + 1);
-			topic.clear();
-			topic.push_str(last);
+			send.send(last.to_string()).unwrap();
 		}
 		if last.starts_with("PRIVMSG ") {
 			let (_,last) = data.split_at(data.find(':').unwrap() + 1);
