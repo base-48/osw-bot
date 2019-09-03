@@ -10,10 +10,10 @@ static CHAN: &str = "#testbot32";
 static NICK: &str = "osw-bot";
 
 static OFILE: 	&str = "/sys/class/gpio/gpio2_pd2/value";
-static CFILE:		&str = "/sys/class/gpio/gpio1_pd0/value";
+static CFILE:	&str = "/sys/class/gpio/gpio1_pd0/value";
 static OLFILE:	&str = "/sys/class/gpio/gpio4_pd5/value";
 static CLFILE:	&str = "/sys/class/gpio/gpio5_pd6/value";
-static SFILE:		&str = "/sys/class/gpio/gpio3_pd1/value";
+static SFILE:	&str = "/sys/class/gpio/gpio3_pd1/value";
 
 // debug
 //static OFILE: &str = "ofile.tmp";
@@ -42,7 +42,12 @@ fn main() -> std::io::Result<()> {
 			let mut data = String::new();
 			match r.read_line(&mut data) {
 				Err(_) | Ok(0) => { thread::sleep(time::Duration::new(180, 0)); break; }
-				Ok(_) => { eval(data.trim_end().to_string(), &send, s.try_clone()?)?; }
+				Ok(_) => { 
+					match eval(data.trim_end().to_string(), &send, s.try_clone()?) {
+						Err(_) => { thread::sleep(time::Duration::new(180, 0)); break; }
+						Ok(_) => {}
+					}
+				}
 			}
 		}
 	}
