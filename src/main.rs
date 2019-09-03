@@ -6,7 +6,7 @@ use std::sync::mpsc::{Sender, Receiver, channel};
 use std::fs::File;
 
 static ADDR: &str = "irc.freenode.org:6667";
-static CHAN: &str = "#testbot32";
+static CHAN: &str = "#base48";
 static NICK: &str = "osw-bot";
 
 static OFILE: 	&str = "/sys/class/gpio/gpio2_pd2/value";
@@ -30,7 +30,7 @@ fn main() -> std::io::Result<()> {
 		let (send, rec): (Sender<String>, Receiver<String>) = channel();
 
 		s.write(format!("NICK {}\n", NICK).as_ref())?;
-		s.write(format!("USER {} 0 * :test bot\n", NICK).as_ref())?;
+		s.write(format!("USER {} 0 * :open switch bot\n", NICK).as_ref())?;
 		s.write(format!("JOIN {}\n", CHAN).as_ref())?;
 		
 		let sc = s.try_clone()?;
