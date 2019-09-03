@@ -9,15 +9,18 @@ static ADDR: &str = "irc.freenode.org:6667";
 static CHAN: &str = "#testbot32";
 static NICK: &str = "osw-bot";
 
-//static OFILE: 	&str = "/sys/class/gpio/gpio2_pd2/value";
-//static CFILE:		&str = "/sys/class/gpio/gpio1_pd0/value";
-//static OLFILE:	&str = "/sys/class/gpio/gpio4_pd5/value";
-//static CLFILE:	&str = "/sys/class/gpio/gpio5_pd6/value";
-//static SLFILE:	&str = "/sys/class/gpio/gpio3_pd1/value";
+static OFILE: 	&str = "/sys/class/gpio/gpio2_pd2/value";
+static CFILE:		&str = "/sys/class/gpio/gpio1_pd0/value";
+static OLFILE:	&str = "/sys/class/gpio/gpio4_pd5/value";
+static CLFILE:	&str = "/sys/class/gpio/gpio5_pd6/value";
+static SFILE:		&str = "/sys/class/gpio/gpio3_pd1/value";
 
 // debug
-static OFILE: &str = "ofile.tmp";
-static CFILE: &str = "cfile.tmp";
+//static OFILE: &str = "ofile.tmp";
+//static CFILE: &str = "cfile.tmp";
+//static SFILE: &str = "beacon.tmp";
+//static OLFILE:	&str = "clfile.tmp";
+//static CLFILE:	&str = "olfile.tmp";
 
 fn main() -> std::io::Result<()> {
 	loop{
@@ -69,7 +72,6 @@ fn checksw(rec: Receiver<String>, mut s: TcpStream){
 			let (_,last) = topic.split_at(topic.find('|').unwrap_or(0));
 			let mut top = last.to_string();
 			top.remove(0);
-			println!("zmena open {:#?}", top);
 			s.write(format!("TOPIC {} :base open \\o/ |{}\n", CHAN, top).as_ref());
 		}
 		if os.trim() == "0" && cs.trim() == "1"
@@ -77,8 +79,15 @@ fn checksw(rec: Receiver<String>, mut s: TcpStream){
 			let (_,last) = topic.split_at(topic.find('|').unwrap_or(0));
 			let mut top = last.to_string();
 			top.remove(0);
-			println!("zmena close {:#?}", top);
 			s.write(format!("TOPIC {} :base close :( |{}\n", CHAN, top).as_ref());
+		}
+		match File::create(OLFILE) {
+			Ok(mut file) => { file.write_all(os.as_bytes()).unwrap(); }
+			Err(_) => {}
+		}
+		match File::create(CLFILE) {
+			Ok(mut file) => { file.write_all(cs.as_bytes()).unwrap(); }
+			Err(_) => {}
 		}
 	}
 }
@@ -99,8 +108,18 @@ fn eval(mut data: String, send: &Sender<String>, mut s: TcpStream)
 		}
 		if last.starts_with("PRIVMSG ") {
 			let (_,last) = data.split_at(data.find(':').unwrap() + 1);
-			if last == ".beacon on" { println!("BEACON ON"); }
-			if last == ".beacon off" { println!("BEACON OFF"); }
+			if last == ".beacon on" {
+			    match File::create(SFILE) {
+					Ok(mut file) => { file.write_all("1".as_bytes()).unwrap(); }
+					Err(_) => {}
+				}
+			}
+			if last == ".beacon off" {
+				match File::create(SFILE) {
+					Ok(mut file) => { file.write_all("0".as_bytes()).unwrap(); }
+					Err(_) => {}
+				}
+			}
 		}
 	}
 	Ok(())
