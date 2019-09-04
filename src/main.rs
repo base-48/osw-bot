@@ -75,16 +75,14 @@ fn checksw(rec: Receiver<String>, mut s: TcpStream){
 		if os.trim() == "1" && cs.trim() == "0"
 		&& ! topic.starts_with("base open") && ! topic.is_empty(){
 			let (_,last) = topic.split_at(topic.find('|').unwrap_or(0));
-			let mut top = last.to_string();
-			top.remove(0);
-			s.write(format!("TOPIC {} :base open \\o/ |{}\n", CHAN, top).as_ref());
+			s.write(format!("TOPIC {} :base open \\o/ {}\n", CHAN, last).as_ref());
+			thread::sleep(time::Duration::new(3, 0));
 		}
 		if os.trim() == "0" && cs.trim() == "1"
-			&& ! topic.starts_with("base close") && ! topic.is_empty(){
+			&& ! topic.starts_with("base closed") && ! topic.is_empty(){
 			let (_,last) = topic.split_at(topic.find('|').unwrap_or(0));
-			let mut top = last.to_string();
-			top.remove(0);
-			s.write(format!("TOPIC {} :base close :( |{}\n", CHAN, top).as_ref());
+			s.write(format!("TOPIC {} :base closed :( {}\n", CHAN, last).as_ref());
+			thread::sleep(time::Duration::new(3, 0));
 		}
 		match File::create(OLFILE) {
 			Ok(mut file) => { file.write_all(os.as_bytes()).unwrap(); }
@@ -106,20 +104,20 @@ fn eval(mut data: String, send: &Sender<String>, mut s: TcpStream)
 	}
 	else{
 		data.remove(0);
-		let (_,last) = data.split_at(data.find(' ').unwrap() + 1);
-		if last.starts_with("332 ") || last.starts_with("TOPIC ") {
-			let (_,last) = data.split_at(data.find(':').unwrap() + 1);
-			send.send(last.to_string()).unwrap();
+		let (_,l1) = data.split_at(data.find(' ').unwrap() + 1);
+		if l1.starts_with("332 ") || l1.starts_with("TOPIC ") {
+			let (_,l2) = l1.split_at(l1.find(':').unwrap() + 1);
+			send.send(l2.to_string()).unwrap();
 		}
-		if last.starts_with("PRIVMSG ") {
-			let (_,last) = data.split_at(data.find(':').unwrap() + 1);
-			if last == ".beacon on" {
+		if l1.starts_with("PRIVMSG ") {
+			let (_,l2) = l1.split_at(l1.find(':').unwrap() + 1);
+			if l2 == ".beacon on" {
 			    match File::create(SFILE) {
 					Ok(mut file) => { file.write_all("1".as_bytes()).unwrap(); }
 					Err(_) => {}
 				}
 			}
-			if last == ".beacon off" {
+			if l2 == ".beacon off" {
 				match File::create(SFILE) {
 					Ok(mut file) => { file.write_all("0".as_bytes()).unwrap(); }
 					Err(_) => {}
