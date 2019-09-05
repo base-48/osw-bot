@@ -1,14 +1,12 @@
-use std::io::prelude::Write;
 use std::{thread, time};
 use std::net::TcpStream;
-use std::io::{BufReader, BufRead, Read};
+use std::io::{BufReader, BufRead, Read, Write};
 use std::sync::mpsc::{Sender, Receiver, channel};
 use std::fs::File;
 
 static ADDR: &str = "irc.freenode.org:6667";
 static CHAN: &str = "#base48";
 static NICK: &str = "osw-bot";
-
 static OFILE: 	&str = "/sys/class/gpio/gpio2_pd2/value";
 static CFILE:	&str = "/sys/class/gpio/gpio1_pd0/value";
 static OLFILE:	&str = "/sys/class/gpio/gpio4_pd5/value";
@@ -19,8 +17,8 @@ static SFILE:	&str = "/sys/class/gpio/gpio3_pd1/value";
 //static OFILE: &str = "ofile.tmp";
 //static CFILE: &str = "cfile.tmp";
 //static SFILE: &str = "beacon.tmp";
-//static OLFILE:	&str = "clfile.tmp";
-//static CLFILE:	&str = "olfile.tmp";
+//static OLFILE:&str = "clfile.tmp";
+//static CLFILE:&str = "olfile.tmp";
 
 fn main() -> std::io::Result<()> {
 	loop{
@@ -34,19 +32,15 @@ fn main() -> std::io::Result<()> {
 		s.write(format!("JOIN {}\n", CHAN).as_ref())?;
 		
 		let sc = s.try_clone()?;
-		thread::spawn(move || {
-			checksw(rec, sc);
-		});
+		thread::spawn(move || checksw(rec, sc),);
 
 		loop{
 			let mut data = String::new();
 			match r.read_line(&mut data) {
 				Err(_) | Ok(0) => { thread::sleep(time::Duration::new(180, 0)); break; }
 				Ok(_) => { 
-					match eval(data.trim_end().to_string(), &send, s.try_clone()?) {
-						Err(_) => { thread::sleep(time::Duration::new(180, 0)); break; }
-						Ok(_) => {}
-					}
+					if let Err(_) = eval(data.trim_end().to_string(), &send, s.try_clone()?)
+						{ thread::sleep(time::Duration::new(180, 0)); break; }
 				}
 			}
 		}
@@ -60,20 +54,14 @@ fn checksw(rec: Receiver<String>, mut s: TcpStream){
 		let mut os = String::new();
 		let mut cs = String::new();
 
-		match rec.try_recv() {
-			Ok(data)=> { topic = data; }
-			Err(_) 	=> {}
-		}
-	    match File::open(OFILE) {
-			Ok(mut file) => { file.read_to_string(&mut os).unwrap(); }
-			Err(_) => {}
-		}
-	    match File::open(CFILE) {
-			Ok(mut file) => { file.read_to_string(&mut cs).unwrap(); }
-			Err(_) => {}
-		}
+		if let Ok(data) = rec.try_recv() { topic = data; }
+		if let Ok(mut file) = File::open(OFILE)
+			{ file.read_to_string(&mut os).unwrap(); }
+		if let Ok(mut file) = File::open(CFILE)
+			{ file.read_to_string(&mut cs).unwrap(); }
+
 		if os.trim() == "1" && cs.trim() == "0"
-		&& ! topic.starts_with("base open") && ! topic.is_empty(){
+			&& ! topic.starts_with("base open") && ! topic.is_empty(){
 			let (_,last) = topic.split_at(topic.find('|').unwrap_or(0));
 			s.write(format!("TOPIC {} :base open \\o/ {}\n", CHAN, last).as_ref());
 			thread::sleep(time::Duration::new(3, 0));
@@ -84,14 +72,10 @@ fn checksw(rec: Receiver<String>, mut s: TcpStream){
 			s.write(format!("TOPIC {} :base closed :( {}\n", CHAN, last).as_ref());
 			thread::sleep(time::Duration::new(3, 0));
 		}
-		match File::create(OLFILE) {
-			Ok(mut file) => { file.write_all(os.as_bytes()).unwrap(); }
-			Err(_) => {}
-		}
-		match File::create(CLFILE) {
-			Ok(mut file) => { file.write_all(cs.as_bytes()).unwrap(); }
-			Err(_) => {}
-		}
+		if let Ok(mut file) = File::create(OLFILE)
+			{ file.write_all(os.as_bytes()).unwrap(); }
+		if let Ok(mut file) = File::create(CLFILE)
+			{ file.write_all(cs.as_bytes()).unwrap(); }
 	}
 }
 
@@ -112,16 +96,12 @@ fn eval(mut data: String, send: &Sender<String>, mut s: TcpStream)
 		if l1.starts_with("PRIVMSG ") {
 			let (_,l2) = l1.split_at(l1.find(':').unwrap() + 1);
 			if l2 == ".beacon on" {
-			    match File::create(SFILE) {
-					Ok(mut file) => { file.write_all("1".as_bytes()).unwrap(); }
-					Err(_) => {}
-				}
+			    if let Ok(mut file) = File::create(SFILE)
+					{ file.write_all("1".as_bytes()).unwrap(); }
 			}
 			if l2 == ".beacon off" {
-				match File::create(SFILE) {
-					Ok(mut file) => { file.write_all("0".as_bytes()).unwrap(); }
-					Err(_) => {}
-				}
+				if let Ok(mut file) = File::create(SFILE)
+					{ file.write_all("0".as_bytes()).unwrap(); }
 			}
 		}
 	}
