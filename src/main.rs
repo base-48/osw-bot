@@ -72,10 +72,14 @@ fn checksw(rec: Receiver<String>, mut s: TcpStream){
 			s.write(format!("TOPIC {} :base closed :( {}\n", CHAN, last).as_ref());
 			thread::sleep(time::Duration::new(3, 0));
 		}
-		if let Ok(mut file) = File::create(OLFILE)
-			{ file.write_all(os.as_bytes()).unwrap(); }
-		if let Ok(mut file) = File::create(CLFILE)
-			{ file.write_all(cs.as_bytes()).unwrap(); }
+		if topic.starts_with("base open"){
+			if let Ok(mut file) = File::create(OLFILE)
+				{ file.write_all(os.as_bytes()).unwrap(); }
+		}
+		if topic.starts_with("base closed"){
+			if let Ok(mut file) = File::create(CLFILE)
+				{ file.write_all(cs.as_bytes()).unwrap(); }
+		}
 	}
 }
 
