@@ -1,6 +1,6 @@
 use std::{thread, time};
 use std::net::TcpStream;
-use std::io::{BufReader, BufRead, Read, Write};
+use std::io::{BufReader, BufRead, Read, Write, Result};
 use std::sync::mpsc::{Sender, Receiver, channel};
 use std::fs::File;
 
@@ -20,71 +20,37 @@ static SFILE:	&str = "/sys/class/gpio/gpio3_pd1/value";
 //static OLFILE:&str = "clfile.tmp";
 //static CLFILE:&str = "olfile.tmp";
 
-fn main() -> std::io::Result<()> {
+fn main() {
 	loop{
-		let mut s = TcpStream::connect(ADDR)?;
-		s.set_read_timeout(Some(time::Duration::new(360, 0)))?;
-		let mut r = BufReader::new(s.try_clone()?);
-		let (send, rec): (Sender<String>, Receiver<String>) = channel();
-
-		s.write(format!("NICK {}\n", NICK).as_ref())?;
-		s.write(format!("USER {} 0 * :open switch bot\n", NICK).as_ref())?;
-		s.write(format!("JOIN {}\n", CHAN).as_ref())?;
-		
-		let sc = s.try_clone()?;
-		thread::spawn(move || checksw(rec, sc),);
-
-		loop{
-			let mut data = String::new();
-			match r.read_line(&mut data) {
-				Err(_) | Ok(0) => { thread::sleep(time::Duration::new(180, 0)); break; }
-				Ok(_) => { 
-					if let Err(_) = eval(data.trim_end().to_string(), &send, s.try_clone()?)
-						{ thread::sleep(time::Duration::new(180, 0)); break; }
-				}
-			}
+		if let Err(err) = start() {
+			println!("{:#?}", err);
+			thread::sleep(time::Duration::new(180, 0));
 		}
 	}
 }
 
-fn checksw(rec: Receiver<String>, mut s: TcpStream){
-	let mut topic = String::new();
+fn start() -> Result<()> {
+	let mut s = TcpStream::connect(ADDR)?;
+	s.set_read_timeout(Some(time::Duration::new(360, 0)))?;
+	let mut r = BufReader::new(s.try_clone()?);
+	let (send, rec): (Sender<String>, Receiver<String>) = channel();
+
+	s.write(format!("NICK {}\n", NICK).as_ref())?;
+	s.write(format!("USER {} 0 * :open switch bot\n", NICK).as_ref())?;
+	s.write(format!("JOIN {}\n", CHAN).as_ref())?;
+
+	let sc = s.try_clone()?;
+	thread::spawn(move || checksw(rec, sc),);
+
 	loop{
-		thread::sleep(time::Duration::new(1, 0));
-		let mut os = String::new();
-		let mut cs = String::new();
-
-		if let Ok(data) = rec.try_recv() { topic = data; }
-		if let Ok(mut file) = File::open(OFILE)
-			{ file.read_to_string(&mut os).unwrap(); }
-		if let Ok(mut file) = File::open(CFILE)
-			{ file.read_to_string(&mut cs).unwrap(); }
-
-		if os.trim() == "1" && cs.trim() == "0"
-			&& ! topic.starts_with("base open") && ! topic.is_empty(){
-			let (_,last) = topic.split_at(topic.find('|').unwrap_or(0));
-			s.write(format!("TOPIC {} :base open \\o/ {}\n", CHAN, last).as_ref());
-			thread::sleep(time::Duration::new(3, 0));
-		}
-		if os.trim() == "0" && cs.trim() == "1"
-			&& ! topic.starts_with("base closed") && ! topic.is_empty(){
-			let (_,last) = topic.split_at(topic.find('|').unwrap_or(0));
-			s.write(format!("TOPIC {} :base closed :( {}\n", CHAN, last).as_ref());
-			thread::sleep(time::Duration::new(3, 0));
-		}
-		if topic.starts_with("base open"){
-			if let Ok(mut file) = File::create(OLFILE)
-				{ file.write_all(os.as_bytes()).unwrap(); }
-		}
-		if topic.starts_with("base closed"){
-			if let Ok(mut file) = File::create(CLFILE)
-				{ file.write_all(cs.as_bytes()).unwrap(); }
-		}
+		let mut data = String::new();
+		r.read_line(&mut data)?;
+		eval(data.trim_end().to_string(), &send, s.try_clone()?)?;
 	}
 }
 
 fn eval(mut data: String, send: &Sender<String>, mut s: TcpStream)
--> std::io::Result<()> {
+-> Result<()> {
 	println!("{:#?}", data);
 
 	if data.starts_with("PING :") {
@@ -110,4 +76,42 @@ fn eval(mut data: String, send: &Sender<String>, mut s: TcpStream)
 		}
 	}
 	Ok(())
+}
+
+fn checksw(rec: Receiver<String>, mut s: TcpStream){
+	let mut topic = String::new();
+	let mut to: u32 = 0;
+	loop{
+		thread::sleep(time::Duration::new(1, 0));
+		let mut os = String::new();
+		let mut cs = String::new();
+
+		if let Ok(data) = rec.try_recv() { topic = data; }
+		if let Ok(mut file) = File::open(OFILE)
+			{ file.read_to_string(&mut os).unwrap(); }
+		if let Ok(mut file) = File::open(CFILE)
+			{ file.read_to_string(&mut cs).unwrap(); }
+
+		if os.trim() == "1" && cs.trim() == "0" && to == 0
+			&& ! topic.starts_with("base open") && ! topic.is_empty(){
+			let (_,last) = topic.split_at(topic.find('|').unwrap_or(0));
+			s.write(format!("TOPIC {} :base open \\o/ {}\n", CHAN, last).as_ref());
+			to = 5;
+		}
+		if os.trim() == "0" && cs.trim() == "1" && to == 0
+			&& ! topic.starts_with("base closed") && ! topic.is_empty(){
+			let (_,last) = topic.split_at(topic.find('|').unwrap_or(0));
+			s.write(format!("TOPIC {} :base closed :( {}\n", CHAN, last).as_ref());
+			to = 5;
+		}
+		if to != 0 { to=to-1; }
+		if topic.starts_with("base open"){
+			if let Ok(mut file) = File::create(OLFILE)
+				{ file.write_all(os.as_bytes()).unwrap(); }
+		}
+		if topic.starts_with("base closed"){
+			if let Ok(mut file) = File::create(CLFILE)
+				{ file.write_all(cs.as_bytes()).unwrap(); }
+		}
+	}
 }
